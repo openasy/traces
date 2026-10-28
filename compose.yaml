@@ -1,0 +1,40 @@
+# Traces. It takes OpenTelemetry traces over OTLP, keeps the spans in VictoriaTraces inside its one container, and
+# shows services, endpoints, the service map and any request as a waterfall; Grafana reads it as Jaeger (ADR 0064).
+#
+#   openssl rand -hex 32 > openasy-kek   # Traces' key: sign-in secrets (ADR 0021). Keep it with your backups
+#   docker compose up -d
+#   docker compose logs traces | grep 'no owner yet'   # the one-time link that creates the owner account
+services:
+  traces:
+    image: ghcr.io/openasy/traces:0.1.0
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:8080:8080" # UI, API, OTLP and Jaeger's API; put a TLS proxy in front to reach it from elsewhere
+    volumes:
+      - traces-data:/data # SQLite (objectives, people) and VictoriaTraces' storage
+    secrets:
+      - openasy-kek # mounted at /run/secrets/openasy-kek
+    environment:
+      # The address people open Traces at; with a TLS proxy in front, its https:// URL.
+      TRACES_PUBLIC_URL: ${TRACES_PUBLIC_URL:-http://localhost:8080}
+      # The install's OpenAsy products, for the product switcher and links to Logs.
+      OPENASY_PRODUCTS: ${OPENASY_PRODUCTS:-}
+      # For OpenTelemetry SDKs and collectors: it can push spans and nothing else.
+      TRACES_INGEST_TOKEN: ${TRACES_INGEST_TOKEN:-}
+      # How long spans are kept, and how full the volume may be before the oldest days go:
+      # TRACES_RETENTION_DAYS: "7"
+      # TRACES_MAX_DISK_PERCENT: "90"
+      # Sign in with your identity provider (OIDC), see the README:
+      # OPENASY_OIDC_ISSUER: https://login.example.com
+      # OPENASY_OIDC_CLIENT_ID: traces
+      # OPENASY_OIDC_CLIENT_SECRET: ${OPENASY_OIDC_CLIENT_SECRET}
+
+volumes:
+  traces-data:
+
+secrets:
+  openasy-kek:
+    file: ./openasy-kek

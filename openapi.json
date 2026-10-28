@@ -1,0 +1,2764 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "OpenAsy Traces API",
+    "version": "0.1.0",
+    "summary": "Which service makes a request slow: OpenTelemetry traces kept in VictoriaTraces, services, endpoints, a map and any trace as a waterfall.",
+    "description": "Every screen of Traces uses this API, and so can your scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457). Every read of spans takes a window, `start` and `end` in RFC 3339, the last hour by default.\n\nSpans are pushed over OTLP/HTTP, protobuf or JSON, to `/opentelemetry/v1/traces` with `TRACES_INGEST_TOKEN`; a collector's otlphttp exporter takes `https://traces.example.com/opentelemetry` as its endpoint. Jaeger's query API is answered under `/jaeger` as Jaeger answers it, so Grafana takes `https://traces.example.com/jaeger` as a Jaeger data source with an API token as bearer token. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This Traces"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Services",
+      "description": "Services and their endpoints: rate, errors and latency."
+    },
+    {
+      "name": "Service map",
+      "description": "Who calls whom."
+    },
+    {
+      "name": "Traces",
+      "description": "Trace search and one trace."
+    },
+    {
+      "name": "Objectives",
+      "description": "What a service's latency and errors should stay under."
+    },
+    {
+      "name": "Jaeger API",
+      "description": "Jaeger's query API, as Jaeger answers it, for Grafana."
+    },
+    {
+      "name": "Push",
+      "description": "Spans sent in over OTLP."
+    },
+    {
+      "name": "Product",
+      "description": "Version and overview of this Traces."
+    }
+  ],
+  "paths": {
+    "/api/v1/services": {
+      "get": {
+        "operationId": "listServices",
+        "tags": [
+          "Services"
+        ],
+        "summary": "Services",
+        "description": "Needs the viewer role. Every service that sent spans in the window, with the rate, errors and latency of the requests it answered, busiest first.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/services/{name}": {
+      "get": {
+        "operationId": "getService",
+        "tags": [
+          "Services"
+        ],
+        "summary": "A service",
+        "description": "Needs the viewer role. Its numbers, its latency percentiles, requests and errors over the window, and its endpoints. A service with no spans in the window has zeros.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/endpoints": {
+      "get": {
+        "operationId": "listEndpoints",
+        "tags": [
+          "Services"
+        ],
+        "summary": "Endpoints",
+        "description": "Needs the viewer role. Every span name of every service's requests, at most 500, busiest first.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Only this service, as its spans name it (service.name).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/durations": {
+      "get": {
+        "operationId": "getDurations",
+        "tags": [
+          "Services"
+        ],
+        "summary": "Durations of requests",
+        "description": "Needs the viewer role. Requests counted by how long they took, all and failed, for a histogram.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Only this service, as its spans name it (service.name).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "description": "Only this endpoint: the span name.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Durations"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/map": {
+      "get": {
+        "operationId": "getMap",
+        "tags": [
+          "Service map"
+        ],
+        "summary": "Service map",
+        "description": "Needs the viewer role. Services, and the databases, queues and hosts they call that send no spans, with each call's rate, errors and p95. A call is a client or producer span; it goes to the service whose server or consumer span answered it, or else to what its attributes name (db.system, messaging.system, peer.service, server.address). The window may be at most 6 hours.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/traces": {
+      "get": {
+        "operationId": "findTraces",
+        "tags": [
+          "Traces"
+        ],
+        "summary": "Find traces",
+        "description": "Needs the viewer role. The latest traces with one span that matches every filter, as in Jaeger, newest first.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Only this service, as its spans name it (service.name).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "description": "A span with this name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "errors",
+            "in": "query",
+            "description": "true: a span that failed.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "name": "minDurationMs",
+            "in": "query",
+            "description": "A span that took at least this long.",
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "maxDurationMs",
+            "in": "query",
+            "description": "A span that took at most this long.",
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many traces; 20 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/traces/{id}": {
+      "get": {
+        "operationId": "getTrace",
+        "tags": [
+          "Traces"
+        ],
+        "summary": "A trace",
+        "description": "Needs the viewer role. Every span of it, earliest first, each with its offset from the start of the trace.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "32 hexadecimal digits.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trace"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/compare": {
+      "get": {
+        "operationId": "compare",
+        "tags": [
+          "Services"
+        ],
+        "summary": "Compare two periods",
+        "description": "Needs the viewer role. Each endpoint's rate, errors and latency in a window and in a base window, such as the same hour a day earlier.",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "description": "RFC 3339; an hour before end when left out. The window may not reach back further than the retention.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "baseStart",
+            "in": "query",
+            "description": "RFC 3339; an hour before baseEnd when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "baseEnd",
+            "in": "query",
+            "description": "RFC 3339; now when left out.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Only this service, as its spans name it (service.name).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/objectives": {
+      "get": {
+        "operationId": "listObjectives",
+        "tags": [
+          "Objectives"
+        ],
+        "summary": "Objectives",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectiveList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "description": "Needs the viewer role."
+      }
+    },
+    "/api/v1/objectives/{service}": {
+      "put": {
+        "operationId": "setObjective",
+        "tags": [
+          "Objectives"
+        ],
+        "summary": "Set a service's objective",
+        "description": "Needs the editor role. Replaces the one it had.",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewObjective"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Objective"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "editor"
+      },
+      "delete": {
+        "operationId": "deleteObjective",
+        "tags": [
+          "Objectives"
+        ],
+        "summary": "Remove a service's objective",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "editor",
+        "description": "Needs the editor role."
+      }
+    },
+    "/opentelemetry/v1/traces": {
+      "post": {
+        "operationId": "pushOtlp",
+        "tags": [
+          "Push"
+        ],
+        "summary": "OpenTelemetry traces",
+        "description": "OTLP over HTTP, protobuf or JSON, as an SDK or a collector's otlphttp exporter sends it to `https://traces.example.com/opentelemetry`; gzip is taken. With `TRACES_INGEST_TOKEN`, or an API token with the editor role.",
+        "security": [
+          {
+            "ingestToken": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-protobuf": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored."
+          },
+          "400": {
+            "description": "The body could not be read, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/jaeger/api/services": {
+      "get": {
+        "operationId": "jaegerServices",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "Services",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/jaeger/api/services/{service}/operations": {
+      "get": {
+        "operationId": "jaegerOperations",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "Operations of a service",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/jaeger/api/operations": {
+      "get": {
+        "operationId": "jaegerOperationsByQuery",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "Operations, by Jaeger's service parameter",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/jaeger/api/traces": {
+      "get": {
+        "operationId": "jaegerFindTraces",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "Find traces",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/jaeger/api/traces/{id}": {
+      "get": {
+        "operationId": "jaegerGetTrace",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "A trace",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Up to 32 hexadecimal digits.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/jaeger/api/dependencies": {
+      "get": {
+        "operationId": "jaegerDependencies",
+        "tags": [
+          "Jaeger API"
+        ],
+        "summary": "Who calls whom, for Grafana's node graph",
+        "description": "Needs the viewer role. Jaeger's own parameters and answer, passed to VictoriaTraces as they are.",
+        "responses": {
+          "200": {
+            "description": "Jaeger's answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JaegerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be answered, with why.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "description": "No such trace or service.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/summary": {
+      "get": {
+        "operationId": "getSummary",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Overview",
+        "description": "Needs the viewer role. Storage, and the services of the last hour, for the first screen.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "listProducts",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Other products of this install",
+        "responses": {
+          "200": {
+            "description": "From OPENASY_PRODUCTS, for the product switcher and links to Logs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "description": "Needs the viewer role."
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "getVersion",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The running version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "liveness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Readiness",
+        "description": "Ready while the database and VictoriaTraces answer.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready to serve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database or VictoriaTraces is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics in the Prometheus text format.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-openasy-session",
+        "description": "The browser session after signing in (`openasy-session` when Traces runs on plain http://localhost). Requests that change something must come from the Traces origin."
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token created under Settings → API tokens (`oa_traces_...`): one role, always an expiry (ADR 0003). Grafana sends one as its data source's bearer token."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Only when Traces is started by its tests or a local script: one shared token with the admin role. A production install does not have it."
+      },
+      "ingestToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`TRACES_INGEST_TOKEN`: for OpenTelemetry SDKs and collectors. It can push spans, nothing else."
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as RFC 9457 Problem Details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid-token",
+              "invalid-json",
+              "invalid-body",
+              "invalid-query",
+              "not-found",
+              "not-configured",
+              "payload-too-large",
+              "storage-unavailable",
+              "internal-error",
+              "unauthenticated",
+              "invalid-credentials",
+              "mfa-required",
+              "mfa-setup-required",
+              "forbidden",
+              "cross-site",
+              "rate-limited"
+            ],
+            "description": "Stable; match on this."
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "required": [
+          "product",
+          "version"
+        ],
+        "properties": {
+          "product": {
+            "const": "traces"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The product, as OpenAsy names it.",
+            "examples": [
+              "logs"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The address people open it at.",
+            "examples": [
+              "https://logs.example.com"
+            ]
+          }
+        }
+      },
+      "ProductList": {
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductLink"
+            }
+          }
+        }
+      },
+      "Latency": {
+        "type": "object",
+        "required": [
+          "requests",
+          "rate",
+          "errors",
+          "errorRate",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms"
+        ],
+        "properties": {
+          "requests": {
+            "type": "integer",
+            "description": "Server and consumer spans, and root spans: the requests answered."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Requests per second over the window."
+          },
+          "errors": {
+            "type": "integer",
+            "description": "Of them, failed: status ERROR."
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "p50Ms": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number"
+          },
+          "p99Ms": {
+            "type": "number"
+          }
+        }
+      },
+      "Objective": {
+        "type": "object",
+        "required": [
+          "service",
+          "latencyMs",
+          "errorPercent",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "latencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The p95 latency the service's requests should stay under."
+          },
+          "errorPercent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of failed requests it should stay under, in percent."
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ObjectiveList": {
+        "type": "object",
+        "required": [
+          "objectives"
+        ],
+        "properties": {
+          "objectives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Objective"
+            }
+          }
+        }
+      },
+      "NewObjective": {
+        "type": "object",
+        "properties": {
+          "latencyMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorPercent": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "At least one of them."
+      },
+      "Service": {
+        "type": "object",
+        "required": [
+          "name",
+          "requests",
+          "rate",
+          "errors",
+          "errorRate",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms",
+          "spans",
+          "endpoints",
+          "trend",
+          "objective",
+          "aboveObjective"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Server and consumer spans, and root spans: the requests answered."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Requests per second over the window."
+          },
+          "errors": {
+            "type": "integer",
+            "description": "Of them, failed: status ERROR."
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "p50Ms": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number"
+          },
+          "p99Ms": {
+            "type": "number"
+          },
+          "spans": {
+            "type": "integer",
+            "description": "Every span of the service in the window: requests, calls out and internal work."
+          },
+          "endpoints": {
+            "type": "integer",
+            "description": "Span names of its requests."
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "p95 latency in milliseconds at each point of the window; null where there were no requests."
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Objective"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aboveObjective": {
+            "type": "boolean",
+            "description": "Its p95 or its errors are above its objective."
+          }
+        }
+      },
+      "ServiceList": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "stepSeconds",
+          "services"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stepSeconds": {
+            "type": "integer"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            }
+          }
+        }
+      },
+      "Endpoint": {
+        "type": "object",
+        "required": [
+          "service",
+          "name",
+          "requests",
+          "rate",
+          "errors",
+          "errorRate",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms",
+          "trend"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "The span name of the request; for HTTP, the method and route.",
+            "examples": [
+              "GET /v1/orders/{id}"
+            ]
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Server and consumer spans, and root spans: the requests answered."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Requests per second over the window."
+          },
+          "errors": {
+            "type": "integer",
+            "description": "Of them, failed: status ERROR."
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "p50Ms": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number"
+          },
+          "p99Ms": {
+            "type": "number"
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "p95 latency in milliseconds at each point of the window; null where there were no requests."
+          }
+        }
+      },
+      "EndpointList": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "stepSeconds",
+          "endpoints"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stepSeconds": {
+            "type": "integer"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            }
+          }
+        }
+      },
+      "ServiceDetail": {
+        "type": "object",
+        "required": [
+          "name",
+          "requests",
+          "rate",
+          "errors",
+          "errorRate",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms",
+          "spans",
+          "endpoints",
+          "trend",
+          "objective",
+          "aboveObjective",
+          "series",
+          "endpointList"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Server and consumer spans, and root spans: the requests answered."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Requests per second over the window."
+          },
+          "errors": {
+            "type": "integer",
+            "description": "Of them, failed: status ERROR."
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "p50Ms": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number"
+          },
+          "p99Ms": {
+            "type": "number"
+          },
+          "spans": {
+            "type": "integer"
+          },
+          "endpoints": {
+            "type": "integer"
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "p95 latency in milliseconds at each point of the window; null where there were no requests."
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Objective"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aboveObjective": {
+            "type": "boolean"
+          },
+          "series": {
+            "type": "object",
+            "required": [
+              "times",
+              "stepSeconds",
+              "p50",
+              "p95",
+              "p99",
+              "requests",
+              "errors"
+            ],
+            "properties": {
+              "times": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "description": "The start of each point."
+              },
+              "stepSeconds": {
+                "type": "integer"
+              },
+              "p50": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "p95": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "p99": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "requests": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "endpointList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            }
+          }
+        }
+      },
+      "Durations": {
+        "type": "object",
+        "required": [
+          "buckets"
+        ],
+        "properties": {
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "leMs",
+                "count",
+                "errors"
+              ],
+              "properties": {
+                "leMs": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Upper bound in milliseconds, exclusive; null for the last bucket."
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "errors": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MapNode": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "stats"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "examples": [
+              "service:orders-api",
+              "database:postgresql:db-prod-01"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "service",
+              "database",
+              "messaging",
+              "external"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Latency"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a service; null for what is only known from the calls made to it."
+          }
+        }
+      },
+      "MapEdge": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "calls",
+          "rate",
+          "errors",
+          "errorRate",
+          "p95Ms",
+          "protocol"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "rate": {
+            "type": "number"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "errorRate": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number",
+            "description": "As the caller measured it."
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Map": {
+        "type": "object",
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MapNode"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MapEdge"
+            }
+          }
+        }
+      },
+      "TraceSummary": {
+        "type": "object",
+        "required": [
+          "traceId",
+          "start",
+          "durationMs",
+          "rootService",
+          "rootName",
+          "spans",
+          "services",
+          "errors"
+        ],
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "rootService": {
+            "type": "string"
+          },
+          "rootName": {
+            "type": "string"
+          },
+          "spans": {
+            "type": "integer"
+          },
+          "services": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          }
+        }
+      },
+      "TraceList": {
+        "type": "object",
+        "required": [
+          "traces"
+        ],
+        "properties": {
+          "traces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceSummary"
+            }
+          }
+        }
+      },
+      "Span": {
+        "type": "object",
+        "required": [
+          "spanId",
+          "parentSpanId",
+          "service",
+          "name",
+          "kind",
+          "offsetMs",
+          "durationMs",
+          "status",
+          "statusMessage",
+          "attributes",
+          "resource",
+          "events"
+        ],
+        "properties": {
+          "spanId": {
+            "type": "string"
+          },
+          "parentSpanId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "service": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "examples": [
+              "server",
+              "client",
+              "producer",
+              "consumer",
+              "internal"
+            ]
+          },
+          "offsetMs": {
+            "type": "number",
+            "description": "From the start of the trace."
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error"
+            ]
+          },
+          "statusMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "resource": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The resource attributes of the service that sent it."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "offsetMs",
+                "attributes"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "offsetMs": {
+                  "type": "number"
+                },
+                "attributes": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Trace": {
+        "type": "object",
+        "required": [
+          "traceId",
+          "start",
+          "durationMs",
+          "services",
+          "spans"
+        ],
+        "properties": {
+          "traceId": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            }
+          }
+        }
+      },
+      "Period": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "requests",
+          "rate",
+          "errors",
+          "errorRate",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requests": {
+            "type": "integer",
+            "description": "Server and consumer spans, and root spans: the requests answered."
+          },
+          "rate": {
+            "type": "number",
+            "description": "Requests per second over the window."
+          },
+          "errors": {
+            "type": "integer",
+            "description": "Of them, failed: status ERROR."
+          },
+          "errorRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "p50Ms": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "type": "number"
+          },
+          "p99Ms": {
+            "type": "number"
+          }
+        }
+      },
+      "Comparison": {
+        "type": "object",
+        "required": [
+          "service",
+          "current",
+          "base",
+          "endpoints"
+        ],
+        "properties": {
+          "service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "base": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "service",
+                "name",
+                "current",
+                "base"
+              ],
+              "properties": {
+                "service": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "current": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Latency"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "base": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Latency"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Summary": {
+        "type": "object",
+        "required": [
+          "storage",
+          "lastHour",
+          "objectives",
+          "aboveObjective"
+        ],
+        "properties": {
+          "storage": {
+            "type": "object",
+            "required": [
+              "running",
+              "readOnly",
+              "storageBytes",
+              "freeBytes",
+              "spansTotal",
+              "spansPerSecond",
+              "retentionDays",
+              "maxDiskPercent"
+            ],
+            "properties": {
+              "running": {
+                "type": "boolean",
+                "description": "Whether VictoriaTraces answers. When it does not, the numbers are 0."
+              },
+              "readOnly": {
+                "type": "boolean",
+                "description": "The volume is too full to take spans."
+              },
+              "storageBytes": {
+                "type": "integer"
+              },
+              "freeBytes": {
+                "type": "integer"
+              },
+              "spansTotal": {
+                "type": "integer",
+                "description": "Spans taken since VictoriaTraces started."
+              },
+              "spansPerSecond": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "retentionDays": {
+                "type": "integer"
+              },
+              "maxDiskPercent": {
+                "type": "integer",
+                "description": "The oldest days are dropped above this use of the volume; 0 is off."
+              }
+            }
+          },
+          "lastHour": {
+            "type": "object",
+            "required": [
+              "services",
+              "requests",
+              "errors"
+            ],
+            "properties": {
+              "services": {
+                "type": "integer"
+              },
+              "requests": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "integer"
+              }
+            }
+          },
+          "objectives": {
+            "type": "integer"
+          },
+          "aboveObjective": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Services whose last hour is above their objective."
+          }
+        }
+      },
+      "JaegerResponse": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "errors": {}
+        },
+        "description": "As Jaeger's query API answers: https://www.jaegertracing.io/docs/latest/apis/"
+      }
+    }
+  }
+}
