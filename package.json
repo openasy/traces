@@ -1,6 +1,6 @@
 {
   "name": "@openasy/traces",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "OpenAsy Traces: which service makes a request slow, followed across every hop. OpenTelemetry traces kept in VictoriaTraces, with a service map, slow endpoints and any request as a waterfall.",
   "license": "AGPL-3.0-only",
