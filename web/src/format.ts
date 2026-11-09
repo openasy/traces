@@ -1,24 +1,25 @@
 // What the pages compute from the API's answers: durations as people read them, the window of a time range, the
 // spans of a trace in the order of the waterfall, and the columns of the service map.
 import type { MapEdge, MapNode, Span } from "./api.ts";
+import { viewerLocale, fixed } from "./i18n.ts";
 
 /** 4920 -> "4.9 s", 84 -> "84 ms", 0.42 -> "0.42 ms". */
 export function ms(v: number): string {
-  if (v >= 60_000) return `${(v / 60_000).toFixed(1)} min`;
-  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)} s`;
+  if (v >= 60_000) return `${fixed(v / 60_000, 1)} min`;
+  if (v >= 1000) return `${fixed(v / 1000, v >= 10_000 ? 0 : 1)} s`;
   if (v >= 10) return `${Math.round(v)} ms`;
-  if (v >= 1) return `${v.toFixed(1)} ms`;
-  return `${v.toFixed(2)} ms`;
+  if (v >= 1) return `${fixed(v, 1)} ms`;
+  return `${fixed(v, 2)} ms`;
 }
 
 /** A share of 0 to 1 as a percent: 0.0082 -> "0.82%". */
-export const percent = (ratio: number) => `${(ratio * 100).toFixed(ratio > 0 && ratio < 0.1 ? 2 : 1)}%`;
+export const percent = (ratio: number) => `${fixed(ratio * 100, ratio > 0 && ratio < 0.1 ? 2 : 1)}%`;
 
 /** Requests per second: 1240 -> "1.2k/s", 0.4 -> "0.40/s". */
 export function perSecond(v: number): string {
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}k/s`;
+  if (v >= 1000) return `${fixed(v / 1000, 1)}k/s`;
   if (v >= 10) return `${Math.round(v)}/s`;
-  return `${v.toFixed(2)}/s`;
+  return `${fixed(v, 2)}/s`;
 }
 
 export const RANGES: Record<string, number> = { "15m": 900, "1h": 3600, "6h": 21_600, "24h": 86_400, "7d": 604_800, "30d": 2_592_000 };
@@ -36,7 +37,7 @@ export function timeLabels(times: string[], stepSeconds: number): string[] {
   const long = stepSeconds * times.length > 86_400;
   return times.map((t) =>
     new Date(t).toLocaleString(
-      undefined,
+      viewerLocale(),
       long ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" },
     ),
   );

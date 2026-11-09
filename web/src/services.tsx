@@ -32,7 +32,7 @@ import { Boxes, Gauge, RefreshCw, Route, Target, Waypoints } from "lucide-react"
 import { useCallback, useState, type FormEvent } from "react";
 import type { Comparison, Durations, Endpoint, Latency, Service, ServiceDetail } from "./api.ts";
 import { line, ms, percent, perSecond, timeLabels } from "./format.ts";
-import { useT } from "./i18n.ts";
+import { useT, fixed } from "./i18n.ts";
 import { ErrorText, param, ranges, ServiceLink, useAction, useData, useRange, type Call } from "./shared.tsx";
 
 const SLOW_MS = 2000;
@@ -623,7 +623,7 @@ export function ComparePage({ call, retentionDays }: { call: Call; retentionDays
       <ErrorText message={error} />
       {c &&
         (worst && worst.change! > 0.5 ? (
-          <Callout tone="danger" title={t("compare.slower", { name: worst.name, service: worst.service, times: (worst.change! + 1).toFixed(1) })}>
+          <Callout tone="danger" title={t("compare.slower", { name: worst.name, service: worst.service, times: fixed(worst.change! + 1, 1) })}>
             {t("compare.slowerDetail", { before: ms(worst.base!.p95Ms), now: ms(worst.current!.p95Ms) })}
           </Callout>
         ) : (

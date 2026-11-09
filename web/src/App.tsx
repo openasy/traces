@@ -20,7 +20,7 @@ import colophon from "virtual:openasy-colophon";
 import { Boxes, GitCompare, KeyRound, LogIn, LogOut, Route as RouteIcon, Share2, UserRound, Users, Waypoints, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProductLink, Summary } from "./api.ts";
-import { useT } from "./i18n.ts";
+import { useT, setViewerLocale } from "./i18n.ts";
 import { MapPage } from "./map.tsx";
 import { search } from "./search.ts";
 import { ComparePage, EndpointsPage, ServicePage, ServicesPage } from "./services.tsx";
@@ -77,7 +77,7 @@ datasources:
     secureJsonData: { httpHeaderValue1: "Bearer <API token, viewer role>" }`}</Code>
       </Panel>
       <Panel title={t("setupPage.semantics")} description={t("setupPage.semanticsDetail")}>
-        <ul className="m-0 flex flex-col gap-1 pl-4 text-xs">
+        <ul className="m-0 flex flex-col gap-1 ps-4 text-xs">
           <li>{t("setupPage.ruleTrace")}</li>
           <li>{t("setupPage.ruleRequest")}</li>
           <li>{t("setupPage.ruleError")}</li>
@@ -254,6 +254,7 @@ export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
   const [locale] = useLocalePreference();
+  setViewerLocale(locale);
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
     <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">

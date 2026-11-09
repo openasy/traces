@@ -20,7 +20,7 @@ import { ScrollText, Waypoints } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import type { Service, Span, Trace, TraceSummary } from "./api.ts";
 import { ms, selfTime, ticks, waterfall } from "./format.ts";
-import { useT } from "./i18n.ts";
+import { useT, viewerLocale, fixed } from "./i18n.ts";
 import { ErrorText, param, ranges, StatusOf, useData, useRange, type Call } from "./shared.tsx";
 
 const COLORS = ["var(--oa-chart-1)", "var(--oa-chart-2)", "var(--oa-chart-3)", "var(--oa-chart-4)"];
@@ -57,7 +57,7 @@ export function Waterfall({ trace, selected, onSelect }: { trace: Trace; selecte
               </span>
             ))}
           </span>
-          <span className="text-right">{t("trace.duration")}</span>
+          <span className="text-end">{t("trace.duration")}</span>
         </div>
         <ul aria-label={t("trace.spansOf", { id: trace.traceId })} className="traces-list">
           {rows.map((s) => {
@@ -89,7 +89,7 @@ export function Waterfall({ trace, selected, onSelect }: { trace: Trace; selecte
                       }}
                     />
                   </span>
-                  <span className={`text-right font-mono ${isHot ? "font-semibold text-danger-text" : "text-fg-muted"}`}>{ms(s.durationMs)}</span>
+                  <span className={`text-end font-mono ${isHot ? "font-semibold text-danger-text" : "text-fg-muted"}`}>{ms(s.durationMs)}</span>
                 </button>
               </li>
             );
@@ -138,7 +138,7 @@ export function SpanDetails({ trace, spanId, logsUrl }: { trace: Trace; spanId: 
         <dd className="m-0 font-mono">{ms(span.durationMs)}</dd>
         <dt className="text-fg-muted">{t("trace.selfTime")}</dt>
         <dd className="m-0 font-mono">
-          {ms(own)} · {t("trace.ofTrace", { percent: ((own / Math.max(trace.durationMs, 0.001)) * 100).toFixed(1) })}
+          {ms(own)} · {t("trace.ofTrace", { percent: fixed((own / Math.max(trace.durationMs, 0.001)) * 100, 1) })}
         </dd>
         <dt className="text-fg-muted">{t("trace.offset")}</dt>
         <dd className="m-0 font-mono">+{ms(span.offsetMs)}</dd>
@@ -206,7 +206,7 @@ function TraceView({ call, id, logsUrl, heading }: { call: Call; id: string; log
     spans: trace.spans.length,
     services: trace.services.length,
     duration: ms(trace.durationMs),
-    at: new Date(trace.start).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }),
+    at: new Date(trace.start).toLocaleString(viewerLocale(), { dateStyle: "medium", timeStyle: "medium" }),
   });
   return (
     <>
@@ -282,7 +282,7 @@ export function TracesPage({ call, retentionDays, logsUrl }: { call: Call; reten
       width: "100px",
       mono: true,
       sortValue: (x) => x.start,
-      cell: (x) => new Date(x.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      cell: (x) => new Date(x.start).toLocaleTimeString(viewerLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
     },
     {
       id: "root",

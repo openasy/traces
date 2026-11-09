@@ -135,7 +135,7 @@
   color: inherit;
   font: inherit;
   font-size: 0.75rem;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   padding: 0;
 }
@@ -222,7 +222,7 @@
   background: var(--oa-canvas);
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
