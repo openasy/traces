@@ -1,6 +1,9 @@
 // Writes openapi.json (ADR 0014, 0024). Run `node scripts/openapi.ts` after changing the API; a test fails when the
 // file is out of date. Sign-in routes come from @openasy/auth and are merged in when the description is served.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+
+// The release's version, so a release changes package.json only.
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
 type S = Record<string, unknown>;
 const ref = (n: string) => ({ $ref: `#/components/schemas/${n}` });
@@ -258,7 +261,7 @@ const spec = {
   openapi: "3.1.1",
   info: {
     title: "OpenAsy Traces API",
-    version: "0.1.0",
+    version,
     summary: "Which service makes a request slow: OpenTelemetry traces kept in VictoriaTraces, services, endpoints, a map and any trace as a waterfall.",
     description:
       "Every screen of Traces uses this API, and so can your scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457). Every read of spans takes a window, `start` and `end` in RFC 3339, the last hour by default.\n\nSpans are pushed over OTLP/HTTP, protobuf or JSON, to `/opentelemetry/v1/traces` with `TRACES_INGEST_TOKEN`; a collector's otlphttp exporter takes `https://traces.example.com/opentelemetry` as its endpoint. Jaeger's query API is answered under `/jaeger` as Jaeger answers it, so Grafana takes `https://traces.example.com/jaeger` as a Jaeger data source with an API token as bearer token. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
